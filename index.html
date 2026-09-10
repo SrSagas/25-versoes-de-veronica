@@ -72,6 +72,8 @@ img{-webkit-user-drag:none}
 .book[data-mode=single] .spread-viewport{pointer-events:auto}
 .book-base{position:absolute;top:3px;bottom:-9px;left:calc((100% - var(--page-w)) * .5 * (1 - var(--open)) - 3px);width:calc(var(--page-w) + (100% - var(--page-w)) * var(--open) + 8px);z-index:0;background:#645438;border:1px solid #3e3526;border-radius:3px 7px 7px 3px;box-shadow:3px 5px 6px #10160f4d,9px 22px 30px #10160f45,18px 38px 65px #10160f30;pointer-events:none}
 .book[data-mode=spread] .book-base{left:-3px;width:calc(100% + 8px)}
+.book[data-mode=spread][data-terminal-spread=true] .book-base{width:calc(50% + 8px)}
+.book[data-mode=spread][data-terminal-spread=true] .spine{display:none}
 .book-base:after{content:'';position:absolute;inset:2px 2px 3px 5px;border-radius:0 4px 4px 0;background:linear-gradient(90deg,#8c7c5b55,transparent 8%,transparent 96%,#fff7df80),repeating-linear-gradient(0deg,#c2b498 0 1px,#eee4ce 1px 3px);box-shadow:inset -1px 0 #a9997d,inset 0 -1px #fff6df}
 .pages,.buffer-pages{position:absolute;inset:0;min-width:0;min-height:0}
 .pages{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);opacity:var(--open);z-index:1}
@@ -94,7 +96,6 @@ img{-webkit-user-drag:none}
 .book-nav button:disabled{opacity:.25}
 .book-nav button:focus-visible{outline-color:var(--yellow)}
 .position{min-width:110px;text-align:center;font-size:12px;letter-spacing:.07em}
-.sound-button{position:absolute;right:max(20px,env(safe-area-inset-right));bottom:max(0px,env(safe-area-inset-bottom));min-height:44px;background:none;color:#e0d4b9;font-size:12px}
 .first-hint{max-width:78%;left:50%;transform:translateX(-50%)}
 
 /* 03 · Cada folha tem cabeçalho, área de composição e fólio independentes.
@@ -749,7 +750,6 @@ dialog::backdrop{background:#1b2118b8;backdrop-filter:blur(3px)}
  .book[data-mode=single] .cover-flower{max-width:126px;max-height:280px}
  .ambient-label,.ambient-date{font-size:9px;letter-spacing:.09em}
  .ambient-label{left:14px}.ambient-date{right:14px}
- .sound-button{right:5px}
  .dialog-content{padding:23px}
 }
 .book[data-density=compact]{--pad:25px}
@@ -1029,7 +1029,6 @@ dialog::backdrop{background:#1b2118b8;backdrop-filter:blur(3px)}
    </div></div><div class="cover-back">feito para uma pessoa só.</div></div></div></div>
  </main>
  <nav class="book-nav" id="bookNav" aria-label="Folhear o caderno" hidden><button data-nav="-1" aria-label="Página anterior">←</button><span class="position" id="position"></span><button data-nav="1" aria-label="Próxima página">→</button></nav>
- <button class="sound-button" id="soundButton" hidden aria-pressed="false">som desligado</button>
  <p class="first-hint" id="firstHint" hidden>arraste a página ou use as setas. os papéis também abrem.</p>
 </div>
 <div id="pagePool" hidden></div>
@@ -1189,7 +1188,7 @@ const pageNodes=pageData.map((data,i)=>{
 
 /* 06 · Mídia. Falhas mantêm o papel original; conteúdo de configuração é texto, nunca HTML. */
 const MediaManager={
- audio:null,userWantsAudio:false,fadeFrame:0,
+ audio:null,audioStarted:false,fadeFrame:0,
  initPhotos(root=document){
   $$('[data-media]',root).forEach(frame=>{
    if(frame.dataset.initialized)return;frame.dataset.initialized='true';
@@ -1198,17 +1197,15 @@ const MediaManager={
    img.addEventListener('load',()=>frame.classList.add('loaded'),{once:true});img.addEventListener('error',()=>{img.remove();frame.classList.remove('loaded');},{once:true});img.src=src;frame.append(img);
   });
  },
- initAudio(){const cfg=EXPERIENCE_CONFIG.music;if(!cfg.enabled||!cfg.src)return;this.audio=new Audio(cfg.src);this.audio.loop=true;this.audio.preload='auto';this.audio.volume=0;$('#soundButton').hidden=false;this.updateAudioButton();this.audio.addEventListener('error',()=>{this.userWantsAudio=false;$('#soundButton').hidden=true;});},
+ initAudio(){const cfg=EXPERIENCE_CONFIG.music;if(!cfg.enabled||!cfg.src)return;this.audio=new Audio(cfg.src);this.audio.loop=true;this.audio.preload='auto';this.audio.volume=0;this.audio.addEventListener('error',()=>{this.audioStarted=false;});},
  targetAudioVolume(){const value=Number(EXPERIENCE_CONFIG.music.volume);return Math.max(0,Math.min(.5,Number.isFinite(value)?value:.08));},
- fadeAudioIn(){if(!this.audio||!this.userWantsAudio)return;cancelAnimationFrame(this.fadeFrame);const audio=this.audio,target=this.targetAudioVolume(),start=audio.volume,time=performance.now(),duration=reduced.matches?0:1600;const tick=now=>{if(!this.userWantsAudio||audio.paused)return;const p=duration?Math.min(1,(now-time)/duration):1;audio.volume=start+(target-start)*p;if(p<1)this.fadeFrame=requestAnimationFrame(tick);};this.fadeFrame=requestAnimationFrame(tick);},
- async startAudio(){if(!this.audio||this.userWantsAudio||EndingController.active)return;this.userWantsAudio=true;this.audio.volume=0;try{await this.audio.play();this.fadeAudioIn();}catch{this.userWantsAudio=false;this.audio.volume=this.targetAudioVolume();}this.updateAudioButton();},
- async toggleAudio(){if(!this.audio)return;if(this.userWantsAudio){this.userWantsAudio=false;cancelAnimationFrame(this.fadeFrame);this.audio.pause();this.audio.volume=this.targetAudioVolume();}else await this.startAudio();this.updateAudioButton();},
- updateAudioButton(){$('#soundButton').textContent=this.userWantsAudio?'som ligado':'som desligado';$('#soundButton').setAttribute('aria-pressed',String(this.userWantsAudio));},
+ fadeAudioIn(){if(!this.audio||!this.audioStarted)return;cancelAnimationFrame(this.fadeFrame);const audio=this.audio,target=this.targetAudioVolume(),start=audio.volume,time=performance.now(),duration=reduced.matches?0:1600;const tick=now=>{if(!this.audioStarted||audio.paused)return;const p=duration?Math.min(1,(now-time)/duration):1;audio.volume=start+(target-start)*p;if(p<1)this.fadeFrame=requestAnimationFrame(tick);};this.fadeFrame=requestAnimationFrame(tick);},
+ async ensureAudioStarted(){if(!this.audio||this.audioStarted||EndingController.active)return;this.audio.volume=0;try{await this.audio.play();this.audioStarted=true;this.fadeAudioIn();}catch{this.audioStarted=false;this.audio.volume=this.targetAudioVolume();}},
  pauseVideos(){$$('video').forEach(video=>video.pause());},
  hasPlayingVideo(){return $$('video:not(.mirror-live)').some(video=>!video.paused&&!video.ended);},
- fadeOut(){if(!this.audio)return;this.userWantsAudio=false;this.updateAudioButton();const start=this.audio.volume,time=performance.now();const tick=now=>{const p=Math.min(1,(now-time)/900);this.audio.volume=start*(1-p);if(p<1)this.fadeFrame=requestAnimationFrame(tick);else this.audio.pause();};this.fadeFrame=requestAnimationFrame(tick);},
+ fadeOut(){if(!this.audio)return;cancelAnimationFrame(this.fadeFrame);const start=this.audio.volume,time=performance.now();const tick=now=>{const p=Math.min(1,(now-time)/900);this.audio.volume=start*(1-p);if(p<1)this.fadeFrame=requestAnimationFrame(tick);else this.audio.pause();};this.fadeFrame=requestAnimationFrame(tick);},
  onHidden(){CameraMirror.stop();this.pauseVideos();if(EndingController.active)cancelAnimationFrame(this.fadeFrame);if(this.audio)this.audio.pause();},
- async onVisible(){if(!document.hidden&&this.audio&&this.userWantsAudio&&!this.hasPlayingVideo()&&!EndingController.active&&!$('#paperDialog').open){try{await this.audio.play();if(this.audio.volume<=0)this.fadeAudioIn();else this.audio.volume=this.targetAudioVolume();}catch{this.userWantsAudio=false;this.updateAudioButton();}}}
+ async onVisible(){if(!document.hidden&&this.audio&&this.audioStarted&&!this.hasPlayingVideo()&&!EndingController.active&&!$('#paperDialog').open){try{this.audio.volume=this.targetAudioVolume();await this.audio.play();}catch{}}}
 };
 
 /* 07 · Páginas persistentes, composição física e gesto compartilham uma transação.
@@ -1440,7 +1437,10 @@ const PageRenderer={
  show(){
   if(FamilyController.isFullscreen())return;
   const spread=BookEngine.mode==='spread';
-  for(const [slot,page] of [[dom.left,spread?this.pages[state.page]:null],[dom.right,this.pages[state.page+(spread?1:0)]]]){
+  const leftPage=spread?this.pages[state.page]:null;
+  const rightPage=this.pages[state.page+(spread?1:0)];
+  dom.book.dataset.terminalSpread=String(Boolean(spread&&leftPage?.classList.contains('back-cover-page')&&!rightPage));
+  for(const [slot,page] of [[dom.left,leftPage],[dom.right,rightPage]]){
    // Uma atualização sem troca de folha não deve desconectar o player nativo.
    if(page?slot.firstElementChild===page&&slot.childElementCount===1:!slot.firstChild)continue;
    while(slot.firstChild)pool.append(slot.firstChild);
@@ -1749,7 +1749,7 @@ const BookEngine={
   if(this.phase!==PHASE.PRESS)return false;
   if(!this.closed&&direction>0&&this.traitsLocked())return false;
   const turn=this.descriptor(direction,this.closed);if(!turn)return false;
-  if(this.closed)MediaManager.startAudio();
+  MediaManager.ensureAudioStarted();
   turn.autoCommit=Boolean(autoCommit);this.turnState=turn;TurnRenderer.prepare(turn);
   if(this.closed&&this.mode==='spread'){this.startCoverOpening(turn);return true;}
   this.phase=PHASE.DRAGGING;return true;
@@ -2592,7 +2592,7 @@ const EndingController={
  async start(){
   if(this.active)return;
   InteractionController.cancel();CameraMirror.stop();Dialog.close();this.active=true;const token=++this.token;
-  state.endingStage=1;save();dom.hint.hidden=true;$('#soundButton').hidden=true;
+  state.endingStage=1;save();dom.hint.hidden=true;
   dom.coverHint.hidden=true;$('#coverDedication').hidden=false;
   MediaManager.fadeOut();
   if(!await BookEngine.closePhysical()||token!==this.token)return;
@@ -2678,7 +2678,6 @@ const EndingController={
  }
 };
 
-$('#soundButton').addEventListener('click',()=>MediaManager.toggleAudio());
 document.addEventListener('keydown',event=>{const menu=$('#moodMenu');if(event.key==='Escape'&&menu?.open&&!$('#paperDialog').open){menu.open=false;$('summary',menu).focus({preventScroll:true});}});
 $('#closeDialog').addEventListener('click',()=>Dialog.close());$('#paperDialog').addEventListener('close',()=>Dialog.cleanup());$('#paperDialog').addEventListener('click',e=>{if(e.target===$('#paperDialog')){const r=e.target.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)Dialog.close();}});
 document.addEventListener('visibilitychange',()=>{
