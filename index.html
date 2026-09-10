@@ -54,7 +54,7 @@ img{-webkit-user-drag:none}
 .first-hint{position:absolute;bottom:max(6px,env(safe-area-inset-bottom));margin:0;text-align:center;color:#c8bfa9;font-size:12px;line-height:1.2;pointer-events:none}
 .book {
  grid-row:1;position:relative;width:100%;max-width:1080px;height:100%;max-height:800px;min-height:0;
- perspective:2400px;--page-w:50%;--open:0;touch-action:none;isolation:isolate;
+ --page-w:50%;--open:0;touch-action:none;isolation:isolate;
  top:calc(26px * (1 - var(--open)));
 }
 .book[data-mode=single]{
@@ -65,15 +65,26 @@ img{-webkit-user-drag:none}
  max-height:none;
  aspect-ratio:var(--single-book-ratio,.66);
 }
-/* A base fechada ocupa uma capa; ao abrir acompanha a mesma geometria do motor. */
+/* O canvas do spread é imutável; somente o viewport controla quanto dele está visível com a capa fechada. */
+.book[data-mode=spread]{top:0}
+.spread-viewport{position:absolute;inset:0;z-index:1;overflow:visible;clip-path:inset(-100px var(--spread-mask,0px) -100px var(--spread-mask,0px));pointer-events:none}
+.spread-viewport>.pages{pointer-events:auto}
+.book[data-mode=single] .spread-viewport{clip-path:none;pointer-events:auto}
 .book-base{position:absolute;top:3px;bottom:-9px;left:calc((100% - var(--page-w)) * .5 * (1 - var(--open)) - 3px);width:calc(var(--page-w) + (100% - var(--page-w)) * var(--open) + 8px);z-index:0;background:#645438;border:1px solid #3e3526;border-radius:3px 7px 7px 3px;box-shadow:3px 5px 6px #10160f4d,9px 22px 30px #10160f45,18px 38px 65px #10160f30;pointer-events:none}
+.book[data-mode=spread] .book-base{left:-3px;width:calc(100% + 8px)}
 .book-base:after{content:'';position:absolute;inset:2px 2px 3px 5px;border-radius:0 4px 4px 0;background:linear-gradient(90deg,#8c7c5b55,transparent 8%,transparent 96%,#fff7df80),repeating-linear-gradient(0deg,#c2b498 0 1px,#eee4ce 1px 3px);box-shadow:inset -1px 0 #a9997d,inset 0 -1px #fff6df}
-.pages,.buffer-pages{position:absolute;inset:0;display:flex;min-width:0;min-height:0}
-.pages{opacity:var(--open);z-index:1}
-.page-slot,.buffer-slot{position:relative;width:50%;height:100%;min-width:0;min-height:0;overflow:hidden}
+.pages,.buffer-pages{position:absolute;inset:0;min-width:0;min-height:0}
+.pages{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);opacity:var(--open);z-index:1}
+.book[data-mode=spread] .pages{opacity:1}
+.buffer-pages{display:flex}
+.page-slot,.buffer-slot{position:relative;height:100%;min-width:0;min-height:0;overflow:hidden}
+.page-slot{width:auto}
+.buffer-slot{width:50%;flex:0 0 50%}
 .book[data-mode=single] .slot-left,.book[data-mode=single] .buffer-slot.left{display:none}
+.book[data-mode=single] .pages{display:block}
 .book[data-mode=single] .page-slot,.book[data-mode=single] .buffer-slot{width:100%}
 .spine{position:absolute;inset:0 auto 0 50%;width:36px;transform:translateX(-50%);z-index:var(--z-spine);pointer-events:none;opacity:var(--open);background:linear-gradient(90deg,transparent,#36281912 35%,#382a1930 49%,#fffb 51%,#382a1910 60%,transparent)}
+.book[data-mode=spread] .spine{opacity:1}
 .book[data-mode=single] .spine{left:0;width:13px;transform:none;background:linear-gradient(90deg,#39291425,transparent)}
 .edge{position:absolute;top:0;bottom:0;width:18px;padding:0;background:none;z-index:var(--z-edge)}
 .edge.prev{left:-5px}.edge.next{right:-5px}
@@ -506,8 +517,13 @@ img{-webkit-user-drag:none}
 
 /* 05 · Camadas físicas. Nenhuma transition de transform concorre com o ponteiro. */
 .turn-layer{position:absolute;inset:0;z-index:var(--z-turn);pointer-events:none;perspective:2400px}
+.spread-turn{position:absolute;inset:0;transform-style:preserve-3d}
+.turn-background{position:absolute;inset:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));z-index:0}
+.turn-bg{position:relative;width:auto;height:100%;min-width:0;min-height:0;overflow:hidden}
 .turn-buffer{position:absolute;inset:0;transform-style:preserve-3d}
-.turn-leaf{position:absolute;left:50%;top:0;width:var(--page-w);height:100%;min-width:0;min-height:0;transform-origin:left center;transform-style:preserve-3d;will-change:transform}
+.buffer-pages{z-index:0}
+.turn-spine{position:absolute;inset:0 auto 0 50%;width:36px;z-index:4;transform:translateX(-50%);background:linear-gradient(90deg,transparent,#36281912 35%,#382a1930 49%,#fffb 51%,#382a1910 60%,transparent);pointer-events:none}
+.turn-leaf{position:absolute;left:50%;top:0;height:100%;min-width:0;min-height:0;z-index:3;transform-origin:left center;transform-style:preserve-3d;will-change:transform}
 .turn-leaf[data-direction=backward]{left:0;transform-origin:right center}
 .book[data-mode=single] .turn-leaf{left:0;width:100%;transform-origin:left center}
 .turn-face{position:absolute;inset:0;width:100%;height:100%;min-width:0;min-height:0;overflow:hidden;background:var(--paper);backface-visibility:hidden;-webkit-backface-visibility:hidden;transform:translateZ(.1px)}
@@ -516,17 +532,13 @@ img{-webkit-user-drag:none}
 .paper-shade,.paper-highlight{position:absolute;inset:0;pointer-events:none;opacity:0;backface-visibility:hidden;-webkit-backface-visibility:hidden;transform:translateZ(.2px)}
 .paper-shade{background:linear-gradient(90deg,#39271266,transparent 24%,transparent 67%,#44311b55)}
 .paper-highlight{background:linear-gradient(90deg,transparent 70%,#fff2 90%,#fff9 99%,transparent)}
-.projected-shadow{position:absolute;top:0;bottom:0;left:50%;width:var(--page-w);opacity:0;background:linear-gradient(90deg,#21180d9c,transparent 80%);transform-origin:left center;pointer-events:none}
-.turn-buffer[data-direction=backward] .projected-shadow{left:0;transform-origin:right center;background:linear-gradient(270deg,#21180d9c,transparent 80%)}
+.projected-shadow{position:absolute;top:0;bottom:0;left:50%;z-index:2;opacity:0;background:linear-gradient(90deg,#21180d9c,transparent 80%);transform-origin:left center;pointer-events:none}
+.turn-buffer[data-direction=backward] .projected-shadow,.spread-turn[data-direction=backward] .projected-shadow{left:0;transform-origin:right center;background:linear-gradient(270deg,#21180d9c,transparent 80%)}
 .book[data-mode=single] .projected-shadow{left:0;width:100%;transform-origin:left center;background:linear-gradient(90deg,#21180d70,transparent 72%)}
 .book.turning{user-select:none;cursor:grabbing}
 .book.turning .pages{pointer-events:none}
-/* No spread, a abertura da capa usa superfícies congeladas. O spread real só assume no frame final,
-   evitando páginas duplicadas atrás da capa durante a rotação. */
-.cover-spread-underlay{position:absolute;top:0;overflow:hidden;pointer-events:none;will-change:transform;transform:translate3d(0,0,0)}
-.cover-spread-underlay>.page{width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;max-width:none!important;max-height:none!important}
-.book[data-mode=spread][data-turn-kind=cover] .pages,
-.book[data-mode=spread][data-turn-kind=cover] .spine{opacity:0}
+/* Em paper turn, a composição temporária completa é a única dona do frame. */
+.book.turning[data-mode=spread][data-turn-kind=paper] .spread-viewport{visibility:hidden}
 .book.turning[data-mode=spread][data-turn-kind=cover] .cover-board:focus-visible{outline:none}
 .cover{position:absolute;inset:0;z-index:var(--z-cover);perspective:2400px;pointer-events:none}
 .cover-board{position:absolute;top:0;left:25%;width:50%;height:100%;transform-origin:left center;transform-style:preserve-3d;pointer-events:auto;cursor:grab;user-select:none;border-radius:3px 6px 6px 3px}
@@ -998,9 +1010,11 @@ dialog::backdrop{background:#1b2118b8;backdrop-filter:blur(3px)}
 <div class="stage" id="stage" hidden>
  <div class="ambient-label">um caderno · uma pessoa</div><div class="ambient-date">10 setembro 2026</div>
  <main class="book covered" id="book" data-mode="single" aria-label="Caderno da Verônica">
-  <div class="book-base" aria-hidden="true"></div>
-  <div class="pages" id="pages"><div class="page-slot slot-left" id="leftSlot"></div><div class="page-slot slot-right" id="rightSlot"></div></div>
-  <div class="spine" aria-hidden="true"></div>
+  <div class="spread-viewport" id="spreadViewport">
+   <div class="book-base" aria-hidden="true"></div>
+   <div class="pages" id="pages"><div class="page-slot slot-left" id="leftSlot"></div><div class="page-slot slot-right" id="rightSlot"></div></div>
+   <div class="spine" aria-hidden="true"></div>
+  </div>
   <button class="edge prev" data-nav="-1" aria-label="Página anterior" hidden></button><button class="edge next" data-nav="1" aria-label="Próxima página" hidden></button>
   <div class="turn-layer" id="turnLayer" aria-hidden="true" inert hidden></div>
   <div class="cover" id="cover"><div class="cover-board" role="button" tabindex="0" aria-label="Abrir o caderno da Verônica" aria-describedby="coverOpenHint"><div class="cover-front"><div class="cover-content">
@@ -1010,7 +1024,7 @@ dialog::backdrop{background:#1b2118b8;backdrop-filter:blur(3px)}
    <figure class="media cover-photo" data-media="cover" hidden><div class="media-fallback"><span class="media-mark">V.</span></div></figure>
    <div class="cover-bottom"><p class="small">Um caderno pra você,<br>feito por mim.</p><small>10 · 09 · 2001 — feito por Vitor</small><span class="cover-open-hint" id="coverOpenHint">toque ou arraste para abrir ↗</span></div>
    <p class="cover-dedication" id="coverDedication" hidden>feliz 25, Amor.</p>
-  </div></div><div class="cover-back">feito para uma pessoa só.</div></div></div>
+   </div></div><div class="cover-back">feito para uma pessoa só.</div></div></div>
  </main>
  <nav class="book-nav" id="bookNav" aria-label="Folhear o caderno" hidden><button data-nav="-1" aria-label="Página anterior">←</button><span class="position" id="position"></span><button data-nav="1" aria-label="Próxima página">→</button></nav>
  <button class="sound-button" id="soundButton" hidden aria-pressed="false">som desligado</button>
@@ -1202,7 +1216,7 @@ const MOTION=Object.freeze({intent:7,axisRatio:1.15,commitAt:.44,flick:.42,rever
 const clamp=(value,min=0,max=1)=>Math.max(min,Math.min(max,value));
 const dom={
  book:$('#book'),pages:$('#pages'),left:$('#leftSlot'),right:$('#rightSlot'),
- layer:$('#turnLayer'),cover:$('#cover'),board:$('.cover-board'),back:$('.cover-back'),
+ layer:$('#turnLayer'),cover:$('#cover'),board:$('.cover-board'),
  nav:$('#bookNav'),position:$('#position'),hint:$('#firstHint'),coverHint:$('#coverOpenHint')
 };
 
@@ -1439,14 +1453,14 @@ const PageRenderer={
   FamilyController.layoutVideos();
   CameraMirror.syncVisibility();
  },
- snapshot(index,geometry=BookEngine.geometry){
-  const source=this.pages[index];
-  if(!source){const blank=document.createElement('div');blank.className='blank-paper';return blank;}
-  // Páginas fora dos slots vivem em #pagePool[hidden] e medem 0x0. A snapshot usa a geometria física congelada da transação.
-  const width=geometry?.pageWidth||this.measure?.clientWidth||0,height=geometry?.height||this.measure?.clientHeight||0;
-  const copy=source.cloneNode(true);copy.inert=true;copy.removeAttribute('tabindex');
-  if(width>0){copy.style.width=width+'px';copy.style.minWidth=width+'px';copy.style.maxWidth=width+'px';copy.style.flex='0 0 '+width+'px';}
-  if(height>0){copy.style.height=height+'px';copy.style.minHeight=height+'px';copy.style.maxHeight=height+'px';}
+  snapshot(index){
+    const source=this.pages[index];
+    const copy=source?source.cloneNode(true):document.createElement('article');
+    if(!source)copy.className='blank-paper';
+    copy.inert=true;copy.removeAttribute('id');copy.removeAttribute('tabindex');
+   // A caixa física pertence ao slot/face; a cópia ocupa somente esse contêiner.
+   copy.style.width='100%';copy.style.minWidth='0';copy.style.maxWidth='none';copy.style.flex='none';
+   copy.style.height='100%';copy.style.minHeight='0';copy.style.maxHeight='none';
   copy.setAttribute('aria-hidden','true');copy.classList.add('snapshot');
   $$('[id]',copy).forEach(node=>node.removeAttribute('id'));
   $$('button,a,input,select,textarea,[tabindex]',copy).forEach(node=>{node.tabIndex=-1;node.removeAttribute('aria-controls');node.removeAttribute('aria-describedby');});
@@ -1475,52 +1489,70 @@ const PageRenderer={
    Em single/backward, o fundo é a página ATUAL até a folha anterior cobri-la. */
 const TurnRenderer={
  visual:null,
- prepare(turn){
-  const isCover=turn.sheet.material==='cover';
+ activate(turn){
   dom.book.classList.add('turning');
-  dom.book.dataset.turnKind=isCover?'cover':'paper';
-  if(isCover){
-   // A capa e o miolo precisam representar o mesmo livro em toda a transição.
-   // No spread, a folha esquerda vive no verso da capa e a direita em um underlay congelado;
-   // as páginas reais ficam ocultas até o commit para não existir conteúdo duplicado.
-   dom.board.setAttribute('aria-disabled','true');
-   dom.back.replaceChildren(PageRenderer.snapshot(turn.mode==='spread'?turn.from:-1,turn.geometry));
-   let underlay=null;
-   if(turn.mode==='spread'){
-    underlay=document.createElement('div');underlay.className='cover-spread-underlay';
-    underlay.style.left=turn.geometry.pageWidth*.5+'px';
-    underlay.style.width=turn.geometry.pageWidth+'px';
-    underlay.style.height=turn.geometry.height+'px';
-    underlay.append(PageRenderer.snapshot(turn.from+1,turn.geometry));
-    dom.layer.append(underlay);dom.layer.hidden=false;
-   }
-   this.visual={leaf:dom.board,cover:true,underlay,shades:[],edges:[],projection:null};
-   dom.board.style.willChange='transform';
-   dom.cover.hidden=false;
-   return;
+  dom.book.dataset.turnKind=turn.type;
+ },
+ face(index,back){
+  const node=document.createElement('div');
+  node.className='turn-face'+(back?' back':' front');
+  node.append(PageRenderer.snapshot(index));
+  return node;
+ },
+ prepare(turn){
+  if(turn.type==='cover'){this.prepareCover(turn);return;}
+  if(turn.mode==='spread'){this.prepareSpreadPaper(turn);return;}
+  this.prepareSinglePaper(turn);
+ },
+ prepareCover(turn){
+  dom.layer.replaceChildren();dom.layer.hidden=true;
+  dom.board.setAttribute('aria-disabled','true');
+  dom.board.style.willChange='transform';
+  dom.cover.hidden=false;
+  this.visual={leaf:dom.board,cover:true};
+  this.draw(turn,0);this.activate(turn);
+ },
+ prepareSpreadPaper(turn){
+  const root=document.createElement('div');root.className='spread-turn';
+  root.dataset.direction=turn.direction>0?'forward':'backward';
+  root.style.width=turn.geometry.width+'px';root.style.height=turn.geometry.height+'px';
+  const background=document.createElement('div');background.className='turn-background';
+  background.style.width=turn.geometry.width+'px';background.style.height=turn.geometry.height+'px';
+  for(const [index,side] of [[turn.backgroundLeft,'left'],[turn.backgroundRight,'right']]){
+   const slot=document.createElement('div');slot.className='turn-bg '+side;
+   slot.style.width=turn.geometry.pageWidth+'px';slot.style.height=turn.geometry.height+'px';
+   slot.append(PageRenderer.snapshot(index));background.append(slot);
   }
+  const spine=document.createElement('div');spine.className='turn-spine';
+  const projection=document.createElement('div');projection.className='projected-shadow';
+  projection.style.width=turn.geometry.pageWidth+'px';
+  const leaf=document.createElement('div');leaf.className='turn-leaf';
+  leaf.dataset.direction=turn.direction>0?'forward':'backward';
+  leaf.style.width=turn.geometry.pageWidth+'px';leaf.style.height=turn.geometry.height+'px';
+  const faces=[this.face(turn.frontPage,false),this.face(turn.backPage,true)],shades=[],edges=[];
+  for(const plane of faces){
+   const shade=document.createElement('div');shade.className='paper-shade';
+   const edge=document.createElement('div');edge.className='paper-highlight';
+   plane.append(shade,edge);shades.push(shade);edges.push(edge);
+  }
+  leaf.append(...faces);root.append(background,spine,projection,leaf);
+  dom.layer.replaceChildren(root);
+  this.visual={leaf,projection,shades,edges,cover:false};
+  this.draw(turn,0);dom.layer.hidden=false;this.activate(turn);
+ },
+ prepareSinglePaper(turn){
   const buffer=document.createElement('div');buffer.className='turn-buffer';buffer.dataset.direction=turn.direction>0?'forward':'backward';
   buffer.style.width=turn.geometry.width+'px';buffer.style.height=turn.geometry.height+'px';
   const background=document.createElement('div');background.className='buffer-pages';
   background.style.width=turn.geometry.width+'px';background.style.height=turn.geometry.height+'px';
-  const base=(index,side)=>{
-   const slot=document.createElement('div');slot.className='buffer-slot '+side;
-   slot.append(PageRenderer.snapshot(index,turn.geometry));background.append(slot);
-  };
-  if(turn.mode==='spread'){
-   base(turn.direction>0?turn.from:turn.target,'left');
-   base(turn.direction>0?turn.target+1:turn.from+1,'right');
-  }else base(turn.direction>0?turn.target:turn.from,'right');
+  const slot=document.createElement('div');slot.className='buffer-slot right';
+  slot.append(PageRenderer.snapshot(turn.backgroundRight));background.append(slot);
   const projection=document.createElement('div');projection.className='projected-shadow';
+  projection.style.width=turn.geometry.pageWidth+'px';
   const leaf=document.createElement('div');leaf.className='turn-leaf';
   leaf.dataset.direction=turn.direction>0?'forward':'backward';
   leaf.style.width=turn.geometry.pageWidth+'px';leaf.style.height=turn.geometry.height+'px';
-  const face=(index,back)=>{
-   const node=document.createElement('div');node.className='turn-face'+(back?' back':' front');
-   node.append(PageRenderer.snapshot(index,turn.geometry));return node;
-  };
-  const faces=[face(turn.sheet.frontPage,false),face(turn.sheet.backPage,true)];
-  const shades=[],edges=[];
+  const faces=[this.face(turn.frontPage,false),this.face(turn.backPage,true)],shades=[],edges=[];
   for(const plane of faces){
    const shade=document.createElement('div');shade.className='paper-shade';
    const edge=document.createElement('div');edge.className='paper-highlight';
@@ -1528,19 +1560,22 @@ const TurnRenderer={
   }
   leaf.append(...faces);buffer.append(background,projection,leaf);
   this.visual={leaf,projection,shades,edges,cover:false};
-  dom.layer.append(buffer);
-  // O buffer inteiro só é exposto quando frente, verso e fundo estão prontos.
-  this.draw(turn,0);
-  dom.layer.hidden=false;
+  dom.layer.replaceChildren(buffer);
+  this.draw(turn,0);dom.layer.hidden=false;this.activate(turn);
  },
  draw(turn,progress){
   const visual=this.visual;if(!visual)return;
   const wave=Math.sin(Math.PI*progress);
   if(visual.cover){
-   const translation=turn.mode==='spread'?turn.geometry.pageWidth*.5*progress:0;
-   visual.leaf.style.transform='translate3d('+translation+'px,0,0) rotateY('+(-180*progress)+'deg)';
-   if(visual.underlay)visual.underlay.style.transform='translate3d('+translation+'px,0,0)';
-   dom.book.style.setProperty('--open',String(progress));
+   if(turn.mode==='spread'){
+    const translation=turn.geometry.pageWidth*.5*progress;
+    visual.leaf.style.transform='translate3d('+translation+'px,0,0) rotateY('+(-180*progress)+'deg)';
+    dom.book.style.setProperty('--spread-mask',turn.geometry.pageWidth*.5*(1-progress)+'px');
+    dom.cover.style.zIndex=progress<.5?'':'0';
+   }else{
+    visual.leaf.style.transform='rotateY('+(-180*progress)+'deg)';
+    dom.book.style.setProperty('--open',String(progress));
+   }
    return;
   }
   const backward=turn.direction<0;
@@ -1553,8 +1588,15 @@ const TurnRenderer={
   visual.projection.style.transform='scaleX('+(.08+wave*.92)+')';
  },
  clear(){
-  if(this.visual?.cover){dom.board.style.transform='';dom.board.style.willChange='';dom.back.replaceChildren();}
+  dom.board.style.transform='';dom.board.style.willChange='';dom.cover.style.removeProperty('z-index');
   dom.layer.replaceChildren();dom.layer.hidden=true;this.visual=null;
+  if(BookEngine.mode==='spread'&&BookEngine.geometry){
+   dom.book.style.setProperty('--open','1');
+   dom.book.style.setProperty('--spread-mask',(BookEngine.closed?BookEngine.geometry.pageWidth*.5:0)+'px');
+  }else{
+   dom.book.style.setProperty('--open',BookEngine.closed?'0':'1');
+   dom.book.style.removeProperty('--spread-mask');
+  }
   dom.book.classList.remove('turning');delete dom.book.dataset.turnKind;
  }
 };
@@ -1607,10 +1649,10 @@ const BookEngine={
   const rect=dom.book.getBoundingClientRect();
   const signature=[Math.round(rect.width),Math.round(rect.height),nextMode,dom.book.dataset.density].join(':');
   if(this.geometry?.signature===signature&&!PageRenderer.dirty){
-   this.geometry={...this.geometry,viewport,left:rect.left,top:rect.top,width:rect.width,height:rect.height,pageWidth:this.mode==='spread'?rect.width/2:rect.width};
+   this.geometry={...this.geometry,viewport,left:rect.left,top:rect.top,width:rect.width,height:rect.height,pageWidth:this.mode==='spread'?rect.width/2:rect.width,spineX:this.mode==='spread'?rect.width/2:0};
    this.present();return;
   }
-  this.geometry={signature,viewport,width:rect.width,height:rect.height,pageWidth:this.mode==='spread'?rect.width/2:rect.width,left:rect.left,top:rect.top};
+  this.geometry={signature,viewport,width:rect.width,height:rect.height,pageWidth:this.mode==='spread'?rect.width/2:rect.width,spineX:this.mode==='spread'?rect.width/2:0,left:rect.left,top:rect.top};
   PageRenderer.dirty=true;PageRenderer.reflow(anchor);
   this.present();
  },
@@ -1623,7 +1665,13 @@ const BookEngine={
   dom.board.setAttribute('aria-label',state.completed?'Reabrir o caderno da Verônica desde o início':state.opened?'Continuar a leitura do caderno da Verônica':'Abrir o caderno da Verônica');
   dom.coverHint.textContent=state.completed?'toque ou arraste para reler ↗':state.opened?'toque ou arraste para continuar ↗':'toque ou arraste para abrir ↗';
   dom.coverHint.hidden=EndingController.active;
-  dom.book.style.setProperty('--open',this.closed?'0':'1');
+  if(this.mode==='spread'){
+   dom.book.style.setProperty('--open','1');
+   dom.book.style.setProperty('--spread-mask',(this.closed&&this.geometry?this.geometry.pageWidth*.5:0)+'px');
+  }else{
+   dom.book.style.setProperty('--open',this.closed?'0':'1');
+   dom.book.style.removeProperty('--spread-mask');
+  }
   dom.book.classList.toggle('covered',this.closed);
   dom.pages.inert=this.closed;
   dom.nav.hidden=this.closed;
@@ -1632,21 +1680,26 @@ const BookEngine={
   PageRenderer.show();
  },
  descriptor(direction,opening=false){
-  if(opening)return {from:state.page,target:state.page,direction:1,mode:this.mode,geometry:this.geometry,
-   sheet:{index:-1,material:'cover',frontPage:null,backPage:null},progress:0};
+  const spread=this.mode==='spread';
+  const geometry={...this.geometry};
+  if(opening)return {type:'cover',from:state.page,target:state.page,direction:1,mode:this.mode,geometry,
+   backgroundLeft:spread?state.page:null,backgroundRight:state.page+(spread?1:0),
+   frontPage:null,backPage:null,origin:spread?'moving-cover-hinge':'left',progress:0};
   const target=state.page+direction*this.step;
   if(target<0)return null;
-  const spread=this.mode==='spread';
   if(target>=PageRenderer.pages.length){
    if(direction<0)return null;
-   const front=spread?Math.min(state.page+1,PageRenderer.pages.length-1):state.page;
-   return {from:state.page,target:PageRenderer.pages.length,direction,mode:this.mode,geometry:this.geometry,terminal:true,
-    sheet:{index:spread?Math.floor((state.page+1)/2):state.page,material:'paper',frontPage:front,backPage:null},progress:0};
+   return {type:'paper',from:state.page,target:PageRenderer.pages.length,direction,mode:this.mode,geometry,terminal:true,
+    backgroundLeft:spread?state.page:null,backgroundRight:null,
+    frontPage:spread?(state.page+1<PageRenderer.pages.length?state.page+1:null):state.page,backPage:null,
+    origin:'spine',progress:0};
   }
-  const front=spread?(direction>0?state.page+1:state.page):(direction>0?state.page:target);
-  const back=spread?(direction>0?target:target+1):-1;
-  return {from:state.page,target,direction,mode:this.mode,geometry:this.geometry,
-   sheet:{index:spread?Math.floor((direction>0?state.page+1:target+1)/2):Math.min(state.page,target),material:'paper',frontPage:front,backPage:back},progress:0};
+  const backgroundLeft=spread?(direction>0?state.page:target):null;
+  const backgroundRight=spread?(direction>0?target+1:state.page+1):(direction>0?target:state.page);
+  const frontPage=spread?(direction>0?state.page+1:state.page):(direction>0?state.page:target);
+  const backPage=spread?(direction>0?target:target+1):null;
+  return {type:'paper',from:state.page,target,direction,mode:this.mode,geometry,
+   backgroundLeft,backgroundRight,frontPage,backPage,origin:'spine',progress:0};
  },
  begin(direction){
   if(this.phase!==PHASE.PRESS)return false;
@@ -1671,7 +1724,7 @@ const BookEngine={
   const commit=forced??(velocity<MOTION.reverseFlick?false:velocity>MOTION.flick&&turn.progress>.05?true:turn.progress>MOTION.commitAt);
   this.phase=commit?PHASE.COMPLETING:PHASE.RETURNING;
   const from=turn.progress,to=commit?1:0,remaining=Math.abs(to-from);
-  const weight=turn.sheet.material==='cover'?MOTION.coverWeight:1;
+  const weight=turn.type==='cover'?MOTION.coverWeight:1;
   const duration=reduced.matches?0:clamp((110+remaining*285)/(1+Math.min(Math.abs(velocity),1)*.3)*weight,MOTION.minRelease,MOTION.maxRelease*weight);
   const started=performance.now();
   const frame=now=>{
@@ -1687,19 +1740,21 @@ const BookEngine={
  finish(commit){
   const turn=this.turnState;if(!turn)return;
   if(commit&&turn.terminal){
-   this.turnState=null;this.phase=PHASE.IDLE;TurnRenderer.clear();GestureController.releaseCapture();
+   TurnRenderer.clear();this.turnState=null;this.phase=PHASE.IDLE;GestureController.releaseCapture();
    state.location=PageRenderer.anchor();save();EndingController.start();return;
   }
-  const restartPages=commit&&turn.sheet.material==='paper'&&turn.direction<0
+  const restartPages=commit&&turn.type==='paper'&&turn.direction<0
    ?PageRenderer.pages.slice(turn.from,turn.from+(turn.mode==='spread'?2:1)):[];
   if(commit){
-   if(turn.sheet.material==='cover'){this.closed=false;state.opened=true;state.completed=false;state.endingStage=0;}
+   if(turn.type==='cover'){this.closed=false;state.opened=true;state.completed=false;state.endingStage=0;}
    else state.page=turn.target;
   }
-  // A superfície verdadeira entra enquanto o buffer/folha ainda cobre a tela.
+  // O renderer temporário ainda é dono do frame enquanto o spread definitivo é montado.
   PageRenderer.show();
+  if(commit&&turn.type==='cover')dom.cover.hidden=true;
+  TurnRenderer.clear();
   this.turnState=null;this.phase=PHASE.IDLE;
-  this.present();TurnRenderer.clear();GestureController.releaseCapture();
+  this.present();GestureController.releaseCapture();
   if(restartPages.length){
    // Reinicia só após a volta confirmada, sem alterar a folha durante o arraste.
    const anchor=PageRenderer.anchor();
@@ -1708,7 +1763,8 @@ const BookEngine={
    PageRenderer.reflow(anchor);this.present();
   }
   state.location=PageRenderer.anchor();save();
-  if(commit){this.focus();}if(PageRenderer.dirty)PageRenderer.refresh();
+  if(commit)this.focus();
+  if(PageRenderer.dirty)PageRenderer.refresh();
  },
  turn(direction){
   if(this.phase!==PHASE.IDLE||this.closed||$('#paperDialog').open||FamilyController.isFullscreen())return;
@@ -1746,7 +1802,11 @@ const BookEngine={
     TurnRenderer.draw(turn,Math.pow(1-t,3));
     if(t<1){this.raf=requestAnimationFrame(frame);return;}
     this.closed=true;this.turnState=null;this.endingResolve=null;
-    dom.book.style.setProperty('--open','0');dom.book.classList.add('covered');
+    if(this.mode==='spread'){
+     dom.book.style.setProperty('--open','1');
+     dom.book.style.setProperty('--spread-mask',this.geometry.pageWidth*.5+'px');
+    }else dom.book.style.setProperty('--open','0');
+    dom.book.classList.add('covered');
     TurnRenderer.clear();resolve(true);
    };
    this.raf=requestAnimationFrame(frame);
