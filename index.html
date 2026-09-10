@@ -521,6 +521,13 @@ img{-webkit-user-drag:none}
 .book[data-mode=single] .projected-shadow{left:0;width:100%;transform-origin:left center;background:linear-gradient(90deg,#21180d70,transparent 72%)}
 .book.turning{user-select:none;cursor:grabbing}
 .book.turning .pages{pointer-events:none}
+/* No spread, a abertura da capa usa superfícies congeladas. O spread real só assume no frame final,
+   evitando páginas duplicadas atrás da capa durante a rotação. */
+.cover-spread-underlay{position:absolute;top:0;overflow:hidden;pointer-events:none;will-change:transform;transform:translate3d(0,0,0)}
+.cover-spread-underlay>.page{width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;max-width:none!important;max-height:none!important}
+.book[data-mode=spread][data-turn-kind=cover] .pages,
+.book[data-mode=spread][data-turn-kind=cover] .spine{opacity:0}
+.book.turning[data-mode=spread][data-turn-kind=cover] .cover-board:focus-visible{outline:none}
 .cover{position:absolute;inset:0;z-index:var(--z-cover);perspective:2400px;pointer-events:none}
 .cover-board{position:absolute;top:0;left:25%;width:50%;height:100%;transform-origin:left center;transform-style:preserve-3d;pointer-events:auto;cursor:grab;user-select:none;border-radius:3px 6px 6px 3px}
 .cover-board:focus-visible{outline:2px solid var(--yellow);outline-offset:7px}
@@ -1028,11 +1035,11 @@ const EXPERIENCE_CONFIG = {
 };
 const MEDIA = {
   cover: {src:'',position:'50% 50%'},
-  seriousPortrait: {src:'',position:'50% 40%'},
-  smilingPortrait: {src:'',position:'50% 40%'},
-  casualPortrait: {src:'',position:'50% 45%'},
-  childhood: {src:'',position:'50% 50%'},
-  couple: {src:'',position:'50% 50%'},
+  seriousPortrait: {src:'assets/images/serious-portrait.jpg',position:'50% 40%'},
+  smilingPortrait: {src:'assets/images/smiling-portrait.jpg',position:'50% 40%'},
+  casualPortrait: {src:'assets/images/casual-portrait.jpg',position:'50% 45%'},
+  childhood: {src:'assets/images/childhood.jpg',position:'50% 50%'},
+  couple: {src:'assets/images/couple.jpg',position:'50% 50%'},
   aline: {src:'',position:'50% 50%'}, mother: {src:'',position:'50% 50%'},
   father: {src:'',position:'50% 50%'}, sisters: {src:'',position:'50% 50%'}, cousins: {src:'',position:'50% 50%'}
 };
@@ -1473,10 +1480,21 @@ const TurnRenderer={
   dom.book.classList.add('turning');
   dom.book.dataset.turnKind=isCover?'cover':'paper';
   if(isCover){
-   // O dono do pointer continua sendo #book. Não tornamos seu alvo original inert.
+   // A capa e o miolo precisam representar o mesmo livro em toda a transição.
+   // No spread, a folha esquerda vive no verso da capa e a direita em um underlay congelado;
+   // as páginas reais ficam ocultas até o commit para não existir conteúdo duplicado.
    dom.board.setAttribute('aria-disabled','true');
    dom.back.replaceChildren(PageRenderer.snapshot(turn.mode==='spread'?turn.from:-1,turn.geometry));
-   this.visual={leaf:dom.board,cover:true,shades:[],edges:[],projection:null};
+   let underlay=null;
+   if(turn.mode==='spread'){
+    underlay=document.createElement('div');underlay.className='cover-spread-underlay';
+    underlay.style.left=turn.geometry.pageWidth*.5+'px';
+    underlay.style.width=turn.geometry.pageWidth+'px';
+    underlay.style.height=turn.geometry.height+'px';
+    underlay.append(PageRenderer.snapshot(turn.from+1,turn.geometry));
+    dom.layer.append(underlay);dom.layer.hidden=false;
+   }
+   this.visual={leaf:dom.board,cover:true,underlay,shades:[],edges:[],projection:null};
    dom.board.style.willChange='transform';
    dom.cover.hidden=false;
    return;
@@ -1520,7 +1538,8 @@ const TurnRenderer={
   const wave=Math.sin(Math.PI*progress);
   if(visual.cover){
    const translation=turn.mode==='spread'?turn.geometry.pageWidth*.5*progress:0;
-   visual.leaf.style.transform='translateX('+translation+'px) rotateY('+(-180*progress)+'deg)';
+   visual.leaf.style.transform='translate3d('+translation+'px,0,0) rotateY('+(-180*progress)+'deg)';
+   if(visual.underlay)visual.underlay.style.transform='translate3d('+translation+'px,0,0)';
    dom.book.style.setProperty('--open',String(progress));
    return;
   }
